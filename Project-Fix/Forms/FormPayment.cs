@@ -1,144 +1,108 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Drawing;
 using System.Windows.Forms;
-using MySql.Data.MySqlClient;
 using Project.Data;
 using Project.Repositories;
-using Project.Core;
-using System.Drawing;
+using Project.Controllers;
 
 namespace Project.Forms
 {
-    public partial class FormPayment : Form
+    public partial class FormPayment : Form, IPaymentView
     {
-        private decimal _grandTotal;
-        private List<CartItem> _cartItemsToProcess;
-        private CartRepository _cartRepository;
-        private ProductRepository _productRepository;
-        private TransactionRepository _transactionRepository;
+        private PaymentController _controller;
 
-        public FormPayment(decimal grandTotal, List<CartItem> cartItemsToProcess)
+        public string GrandTotalLabel { set => lblGrandTotal.Text = value; }
+        public string ChangeLabel { set => lblChange.Text = value; }
+        public Color ChangeLabelColor { set => lblChange.ForeColor = value; }
+
+        public string AmountPaidText
+        {
+            get => txtAmountPaid.Text;
+            set => txtAmountPaid.Text = value;
+        }
+
+        public string PaymentMethod
+        {
+            get => cmbPaymentMethod.SelectedItem?.ToString() ?? string.Empty;
+            set => cmbPaymentMethod.SelectedItem = value;
+        }
+
+        public string BuktiTransferPath
+        {
+            get => txtBuktiTransferPath.Text;
+            set => txtBuktiTransferPath.Text = value;
+        }
+
+        public bool BuktiTransferVisible { set => lblBuktiTransfer.Visible = value; }
+        public bool AmountPaidEnabled { set => txtAmountPaid.Enabled = value; }
+        public bool BrowseProofVisible { set => btnBrowseProof.Visible = value; }
+        public bool AdminRekeningVisible { set => lblAdminRekening.Visible = value; }
+        public string AdminRekeningText { set => lblAdminRekening.Text = value; }
+
+        public void ShowMessage(string message, string title, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            MessageBox.Show(message, title, buttons, icon);
+        }
+
+        public void CloseView()
+        {
+            this.Close();
+        }
+
+        public void SetDialogResult(DialogResult result)
+        {
+            this.DialogResult = result;
+        }
+
+        public DialogResult ShowOpenFileDialog(string filter, out string fileName)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = filter;
+            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                fileName = openFileDialog.FileName;
+                return DialogResult.OK;
+            }
+            fileName = "";
+            return DialogResult.Cancel;
+        }
+
+        public event EventHandler LoadView;
+        public event EventHandler AmountPaidTextChanged;
+        public event EventHandler PaymentMethodSelectedIndexChanged;
+        public event EventHandler PayButtonClick;
+        public event EventHandler CancelButtonClick;
+        public event EventHandler BrowseProofButtonClick;
+
+        public FormPayment(decimal grandTotal, List<CartItem> cartItemsToProcess, string namaPenerima, string alamatPengiriman, string nomorTeleponPenerima)
         {
             InitializeComponent();
-            _grandTotal = grandTotal;
-            _cartItemsToProcess = cartItemsToProcess;
 
-            _cartRepository = new CartRepository(new DatabaseConnection());
-            _productRepository = new ProductRepository(new DatabaseConnection());
-            _transactionRepository = new TransactionRepository(new DatabaseConnection());
-
-            lblGrandTotal.Text = $"Grand Total: {_grandTotal:C}";
-            lblChange.Text = "Change: Rp 0.00";
-            txtAmountPaid.Text = "0";
-        }
-
-        private void FormPayment_Load(object sender, EventArgs e)
-        {
-            cmbPaymentMethod.SelectedIndex = 0; // Select the first payment method (Tunai) by default
-            txtAmountPaid.Focus();
-        }
-
-        private void txtAmountPaid_TextChanged(object sender, EventArgs e)
-        {
-            CalculateChange();
-        }
-
-        private void CalculateChange()
-        {
-            if (decimal.TryParse(txtAmountPaid.Text, out decimal amountPaid))
+            if (cmbPaymentMethod.Items.Count == 0)
             {
-                decimal change = amountPaid - _grandTotal;
-                lblChange.Text = $"Change: {change:C}";
-                lblChange.ForeColor = change >= 0 ? Color.Green : Color.Red;
-            }
-            else
-            {
-                lblChange.Text = "Change: Rp 0.00";
-                lblChange.ForeColor = Color.Black;
-            }
-        }
-
-        private void btnPay_Click(object sender, EventArgs e)
-        {
-            if (!decimal.TryParse(txtAmountPaid.Text, out decimal amountPaid))
-            {
-                MessageBox.Show("Please enter a valid amount.", "Invalid Input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                cmbPaymentMethod.Items.Add("Tunai");
+                cmbPaymentMethod.Items.Add("Bank Transfer");
             }
 
-            if (string.IsNullOrEmpty(cmbPaymentMethod.Text))
-            {
-                MessageBox.Show("Please select a payment method.", "Invalid Payment Method", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            _controller = new PaymentController(
+                this,
+                grandTotal,
+                cartItemsToProcess,
+                namaPenerima,
+                alamatPengiriman,
+                nomorTeleponPenerima,
+                new CartRepository(new DatabaseConnection()),
+                new ProductRepository(new DatabaseConnection()),
+                new TransactionRepository(new DatabaseConnection())
+            );
 
-            if (amountPaid < _grandTotal)
-            {
-                MessageBox.Show("Amount paid is insufficient. Please pay the full amount.", "Payment Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            using (var conn = new DatabaseConnection().GetConnection())
-            {
-                conn.Open();
-                using (var transaction = conn.BeginTransaction())
-                {
-                    try
-                    {
-                        foreach (var item in _cartItemsToProcess)
-                        {
-                            Product productInDb = _productRepository.GetProductById(item.ProdukId);
-                            if (productInDb == null || productInDb.Stok < item.Jumlah)
-                            {
-                                throw new Exception($"Not enough stock for '{item.NamaProduk}'. Available: {productInDb?.Stok ?? 0}");
-                            }
-                        }
-
-                        foreach (var item in _cartItemsToProcess)
-                        {
-                            _productRepository.UpdateProductStock(item.ProdukId, -item.Jumlah, conn, transaction);
-
-                            Transaction newTransaction = new Transaction
-                            {
-                                ProdukId = item.ProdukId,
-                                Jumlah = item.Jumlah,
-                                Tanggal = DateTime.Now,
-                                UserId = SessionManager.Instance.CurrentUser.Id,
-                                Status = "Selesai"
-                            };
-                            _transactionRepository.AddTransaction(newTransaction, conn, transaction);
-                        }
-
-                        _cartRepository.ClearCart(SessionManager.Instance.CurrentUser.Id, conn, transaction);
-
-                        transaction.Commit();
-                        MessageBox.Show("Payment successful! Your order has been placed and paid.", "Payment Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        this.DialogResult = DialogResult.OK;
-                        this.Close();
-                    }
-                    catch (MySqlException ex)
-                    {
-                        transaction.Rollback();
-                        MessageBox.Show("Database Error during payment: " + ex.Message + "\nOrder rolled back.", "Payment Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        this.DialogResult = DialogResult.Abort;
-                        this.Close();
-                    }
-                    catch (Exception ex)
-                    {
-                        transaction.Rollback();
-                        MessageBox.Show("An error occurred during payment processing: " + ex.Message + "\nOrder rolled back.", "Payment Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        this.DialogResult = DialogResult.Abort;
-                        this.Close();
-                    }
-                }
-            }
-        }
-
-        private void btnCancel_Click(object sender, EventArgs e)
-        {
-            this.DialogResult = DialogResult.Cancel;
-            this.Close();
+            this.Load += (sender, e) => LoadView?.Invoke(sender, e);
+            txtAmountPaid.TextChanged += (sender, e) => AmountPaidTextChanged?.Invoke(sender, e);
+            cmbPaymentMethod.SelectedIndexChanged += (sender, e) => PaymentMethodSelectedIndexChanged?.Invoke(sender, e);
+            btnPay.Click += (sender, e) => PayButtonClick?.Invoke(sender, e);
+            btnCancel.Click += (sender, e) => CancelButtonClick?.Invoke(sender, e);
+            btnBrowseProof.Click += (sender, e) => BrowseProofButtonClick?.Invoke(sender, e);
         }
     }
 }

@@ -1,4 +1,3 @@
-// Project/Core/SessionManager.cs
 using Project.Data;
 
 namespace Project.Core

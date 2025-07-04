@@ -51,7 +51,6 @@
             this.btnRegister.TabIndex = 4;
             this.btnRegister.Text = "Register";
             this.btnRegister.UseVisualStyleBackColor = false;
-            this.btnRegister.Click += new System.EventHandler(this.btnRegister_Click);
             //
             // txtConfirmPassword
             //
@@ -121,7 +120,6 @@
             this.btnBackToLogin.TabIndex = 5;
             this.btnBackToLogin.Text = "Back to Login";
             this.btnBackToLogin.UseVisualStyleBackColor = false;
-            this.btnBackToLogin.Click += new System.EventHandler(this.btnBackToLogin_Click);
             //
             // FormRegistrasi
             //

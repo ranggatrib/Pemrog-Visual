@@ -9,6 +9,15 @@ namespace Project.Data
         public int Jumlah { get; set; }
         public DateTime Tanggal { get; set; } = DateTime.Now;
         public int UserId { get; set; }
-        public string Status { get; set; } = "Pending";
+        public string Status { get; set; } = "Menunggu Pembayaran";
+
+        // Pengiriman
+        public string NamaPenerima { get; set; }
+        public string AlamatPengiriman { get; set; }
+        public string NomorTeleponPenerima { get; set; }
+
+        // Pembayaran
+        public string MetodePembayaran { get; set; }
+        public string BuktiTransferPath { get; set; }
     }
 }

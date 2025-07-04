@@ -1,5 +1,5 @@
 ﻿using MySql.Data.MySqlClient;
-using System.Configuration; // Required for ConfigurationManager
+using System.Configuration; 
 
 namespace Project.Data
 {

@@ -1,9 +1,7 @@
-// Project/Repositories/CartRepository.cs
 using MySql.Data.MySqlClient;
 using Project.Data;
 using System;
 using System.Collections.Generic;
-using System.Data;
 
 namespace Project.Repositories
 {

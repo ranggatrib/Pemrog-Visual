@@ -1,76 +1,50 @@
-﻿using System;
-using System.Windows.Forms;
-using MySql.Data.MySqlClient;
+﻿using System.Windows.Forms;
 using Project.Data;
-using Project.Core;
 using Project.Repositories;
-using Project.Forms;
+using Project.Controllers;
 
 namespace Project.Forms
 {
-    public partial class FormLogin : Form
+    public partial class FormLogin : Form, ILoginView
     {
-        private UserRepository _userRepository;
+        private LoginController _controller;
+
+        public string Username => txtUsername.Text.Trim();
+        public string Password => txtPassword.Text;
 
         public FormLogin()
         {
             InitializeComponent();
-            _userRepository = new UserRepository(new DatabaseConnection());
+            _controller = new LoginController(this, new UserRepository(new DatabaseConnection()));
+
+            btnLogin.Click += (sender, e) => _controller.OnLoginAttempt();
+            btnRegister.Click += (sender, e) => _controller.OnRegisterRequested();
         }
 
-        private void btnLogin_Click(object sender, EventArgs e)
+        public void ShowMessage(string message, string title, MessageBoxButtons buttons, MessageBoxIcon icon)
         {
-            try
-            {
-                string username = txtUsername.Text.Trim();
-                string password = txtPassword.Text;
-
-                if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
-                {
-                    MessageBox.Show("Username and Password must be filled.", "Login Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-
-                User loggedInUser = _userRepository.GetUserByUsernameAndPassword(username, password);
-
-                if (loggedInUser != null)
-                {
-                    SessionManager.Instance.LoginUser(loggedInUser);
-
-                    this.Hide();
-
-                    if (loggedInUser.Role == "admin")
-                    {
-                        FormAdminDashboard adminDashboardForm = new FormAdminDashboard();
-                        adminDashboardForm.Show();
-                    }
-                    else
-                    {
-                        FormProdukUser userForm = new FormProdukUser();
-                        userForm.Show();
-                    }
-                }
-                else
-                {
-                    MessageBox.Show("Invalid credentials!", "Login Failed",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-            catch (MySqlException ex)
-            {
-                MessageBox.Show("Database Error: " + ex.Message, "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("An unexpected error occurred: " + ex.Message, "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            MessageBox.Show(message, title, buttons, icon);
         }
 
-        private void btnRegister_Click(object sender, EventArgs e)
+        public void HideView()
         {
             this.Hide();
+        }
+
+        public void ShowAdminDashboard()
+        {
+            FormAdminDashboard adminDashboardForm = new FormAdminDashboard();
+            adminDashboardForm.Show();
+        }
+
+        public void ShowUserDashboard()
+        {
+            FormProdukUser userForm = new FormProdukUser();
+            userForm.Show();
+        }
+
+        public void ShowRegistrationForm()
+        {
             FormRegistrasi registerForm = new FormRegistrasi();
             registerForm.Show();
         }

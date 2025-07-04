@@ -1,82 +1,48 @@
 ﻿using System;
 using System.Windows.Forms;
-using MySql.Data.MySqlClient;
 using Project.Data;
 using Project.Repositories;
-using Project.Forms;
+using Project.Controllers;
 
 namespace Project.Forms
 {
-    public partial class FormRegistrasi : Form
+    public partial class FormRegistrasi : Form, IRegistrasiView
     {
-        private UserRepository _userRepository;
+        private readonly RegistrasiController _controller;
+
+        public string Username => txtUsername.Text.Trim();
+        public string Password => txtPassword.Text;
+        public string ConfirmPassword => txtConfirmPassword.Text;
+
+        public event EventHandler RegisterButtonClick;
+        public event EventHandler BackToLoginButtonClick;
 
         public FormRegistrasi()
         {
             InitializeComponent();
-            _userRepository = new UserRepository(new DatabaseConnection());
+
+            _controller = new RegistrasiController(
+                this,
+                new UserRepository(new DatabaseConnection())
+            );
+
+            btnRegister.Click += (sender, e) => RegisterButtonClick?.Invoke(sender, e);
+            btnBackToLogin.Click += (sender, e) => BackToLoginButtonClick?.Invoke(sender, e);
         }
 
-        private void btnRegister_Click(object sender, EventArgs e)
+        public void ShowMessage(string message, string title, MessageBoxButtons buttons, MessageBoxIcon icon)
         {
-            string username = txtUsername.Text.Trim();
-            string password = txtPassword.Text;
-            string confirmPassword = txtConfirmPassword.Text;
-
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password) || string.IsNullOrEmpty(confirmPassword))
-            {
-                MessageBox.Show("All fields must be filled.", "Registration Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (password.Length < 6)
-            {
-                MessageBox.Show("Password must be at least 6 characters long.", "Registration Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (password != confirmPassword)
-            {
-                MessageBox.Show("Password and Confirm Password do not match.", "Registration Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            try
-            {
-                if (_userRepository.IsUsernameExists(username))
-                {
-                    MessageBox.Show("Username already taken. Please choose another one.", "Registration Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-
-                User newUser = new User
-                {
-                    Username = username,
-                    Password = password, // PENTING: Di aplikasi nyata, HASH password di sini!
-                    Role = "user"
-                };
-
-                _userRepository.AddUser(newUser);
-
-                MessageBox.Show("Registration successful! You can now log in.", "Registration Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                this.Hide();
-                FormLogin loginForm = new FormLogin();
-                loginForm.Show();
-            }
-            catch (MySqlException ex)
-            {
-                MessageBox.Show("Database Error during registration: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("An unexpected error occurred during registration: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            MessageBox.Show(message, title, buttons, icon);
         }
 
-        private void btnBackToLogin_Click(object sender, EventArgs e)
+        public void HideView()
         {
             this.Hide();
-            FormLogin loginForm = new FormLogin();
+        }
+
+        public void ShowLoginForm()
+        {
+            var loginForm = new FormLogin();
             loginForm.Show();
         }
     }

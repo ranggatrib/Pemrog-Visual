@@ -1,169 +1,105 @@
 ﻿using System;
 using System.Data;
 using System.Windows.Forms;
-using MySql.Data.MySqlClient;
 using Project.Data;
 using Project.Repositories;
-using Project.Core;
-using Project.Forms;
+using Project.Controllers;
 
 namespace Project.Forms
 {
-    public partial class FormUserManagement : Form
+    public partial class FormUserManagement : Form, IUserManagementView
     {
-        private UserRepository _userRepository;
-        private User selectedUser = new User();
+        private UserManagementController _controller;
+
+        public string UserIdText
+        {
+            get => txtUserId.Text;
+            set => txtUserId.Text = value;
+        }
+
+        public string UsernameText
+        {
+            get => txtUsername.Text;
+            set => txtUsername.Text = value;
+        }
+
+        public string RoleText
+        {
+            get => cmbRole.SelectedItem?.ToString();
+            set => cmbRole.SelectedItem = value;
+        }
+
+        public int SelectedUserId { get; private set; }
+        public string SelectedUsername { get; private set; }
+        public string SelectedRole { get; private set; }
 
         public FormUserManagement()
         {
             InitializeComponent();
-            _userRepository = new UserRepository(new DatabaseConnection());
-            cmbRole.Items.AddRange(new object[] { "user", "admin" });
-        }
 
-        private void FormUserManagement_Load(object sender, EventArgs e)
-        {
-            LoadUsers();
-            ClearFields();
-        }
+            if (cmbRole.Items.Count == 0)
+            {
+                cmbRole.Items.AddRange(new object[] { "admin", "user" });
+            }
 
-        private void LoadUsers()
-        {
-            try
-            {
-                dgvUsers.DataSource = _userRepository.GetAllUsers();
-                dgvUsers.ClearSelection();
-            }
-            catch (MySqlException ex)
-            {
-                MessageBox.Show("Database Error loading users: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Failed to load users: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
+            _controller = new UserManagementController(this, new UserRepository(new DatabaseConnection()));
 
-        private void dgvUsers_CellClick(object sender, DataGridViewCellEventArgs e)
-        {
-            if (e.RowIndex >= 0)
+            this.Load += (sender, e) => LoadView?.Invoke(sender, e);
+
+            dgvUsers.CellClick += (sender, e) =>
             {
-                DataGridViewRow row = dgvUsers.Rows[e.RowIndex];
-                selectedUser = new User
+                if (e.RowIndex >= 0)
                 {
-                    Id = Convert.ToInt32(row.Cells["Id"].Value),
-                    Username = row.Cells["Username"].Value.ToString(),
-                    Role = row.Cells["Role"].Value.ToString()
-                };
-
-                txtUserId.Text = selectedUser.Id.ToString();
-                txtUsername.Text = selectedUser.Username;
-                cmbRole.SelectedItem = selectedUser.Role;
-            }
-        }
-
-        private void btnUpdateUser_Click(object sender, EventArgs e)
-        {
-            if (selectedUser == null || selectedUser.Id == 0)
-            {
-                MessageBox.Show("Please select a user to update.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (string.IsNullOrEmpty(txtUsername.Text) || string.IsNullOrEmpty(cmbRole.Text))
-            {
-                MessageBox.Show("Username and Role cannot be empty.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            try
-            {
-                selectedUser.Username = txtUsername.Text.Trim();
-                selectedUser.Role = cmbRole.Text;
-
-                bool success = _userRepository.UpdateUser(selectedUser);
-                if (success)
-                {
-                    MessageBox.Show("User updated successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    LoadUsers();
-                    ClearFields();
+                    DataGridViewRow row = dgvUsers.Rows[e.RowIndex];
+                    SelectedUserId = Convert.ToInt32(row.Cells["Id"].Value);
+                    SelectedUsername = row.Cells["Username"].Value.ToString();
+                    SelectedRole = row.Cells["Role"].Value.ToString();
                 }
-                else
-                {
-                    MessageBox.Show("Failed to update user.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-            catch (MySqlException ex)
-            {
-                MessageBox.Show("Database Error updating user: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("An unexpected error occurred during user update: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+                UsersCellClick?.Invoke(sender, e);
+            };
+
+            btnUpdateUser.Click += (sender, e) => UpdateUserButtonClick?.Invoke(sender, e);
+            btnDeleteUser.Click += (sender, e) => DeleteUserButtonClick?.Invoke(sender, e);
+            btnBackToDashboard.Click += (sender, e) => BackToDashboardButtonClick?.Invoke(sender, e);
         }
 
-        private void btnDeleteUser_Click(object sender, EventArgs e)
+        public void DisplayUsers(DataTable users)
         {
-            if (selectedUser == null || selectedUser.Id == 0)
-            {
-                MessageBox.Show("Please select a user to delete.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (SessionManager.Instance.IsLoggedIn && SessionManager.Instance.CurrentUser.Id == selectedUser.Id)
-            {
-                MessageBox.Show("You cannot delete your own account while logged in.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (MessageBox.Show($"Are you sure you want to delete user '{selectedUser.Username}'? This action cannot be undone.", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-            {
-                try
-                {
-                    bool success = _userRepository.DeleteUser(selectedUser.Id);
-                    if (success)
-                    {
-                        MessageBox.Show("User deleted successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        LoadUsers();
-                        ClearFields();
-                    }
-                    else
-                    {
-                        MessageBox.Show("Failed to delete user.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-                catch (MySqlException ex)
-                {
-                    if (ex.Number == 1451)
-                    {
-                        MessageBox.Show("Cannot delete user: This user has existing transactions or linked data. Please delete linked data first.", "Deletion Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                    else
-                    {
-                        MessageBox.Show("Database Error deleting user: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("An unexpected error occurred during user deletion: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
+            dgvUsers.DataSource = users;
+            if (dgvUsers.Columns.Contains("Id")) dgvUsers.Columns["Id"].Visible = false;
+            dgvUsers.ClearSelection();
         }
 
-        private void ClearFields()
+        public void ClearFields()
         {
-            txtUserId.Text = "";
-            txtUsername.Text = "";
+            txtUserId.Clear();
+            txtUsername.Clear();
             cmbRole.SelectedIndex = -1;
-            selectedUser = new User();
+            SelectedUserId = 0;
+            SelectedUsername = string.Empty;
+            SelectedRole = string.Empty;
         }
 
-        private void btnBackToDashboard_Click(object sender, EventArgs e)
+        public DialogResult ShowMessage(string message, string title, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            return MessageBox.Show(message, title, buttons, icon);
+        }
+
+        public void HideView()
         {
             this.Hide();
+        }
+
+        public void ShowAdminDashboard()
+        {
             FormAdminDashboard dashboardForm = new FormAdminDashboard();
             dashboardForm.Show();
         }
+
+        public event EventHandler LoadView;
+        public event DataGridViewCellEventHandler UsersCellClick;
+        public event EventHandler UpdateUserButtonClick;
+        public event EventHandler DeleteUserButtonClick;
+        public event EventHandler BackToDashboardButtonClick;
     }
 }

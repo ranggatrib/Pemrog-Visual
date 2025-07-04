@@ -1,51 +1,41 @@
 ﻿using System;
 using System.Data;
 using System.Windows.Forms;
-using MySql.Data.MySqlClient;
-using Project.Core;
-using Project.Repositories;
-using Project.Forms;
 using Project.Data;
+using Project.Repositories;
+using Project.Controllers;
 
 namespace Project.Forms
 {
-    public partial class FormUserOrders : Form
+    public partial class FormUserOrders : Form, IUserOrdersView
     {
-        private TransactionRepository _transactionRepository;
+        private UserOrdersController _controller;
 
         public FormUserOrders()
         {
             InitializeComponent();
-            _transactionRepository = new TransactionRepository(new DatabaseConnection());
+
+            _controller = new UserOrdersController(this, new TransactionRepository(new DatabaseConnection()));
+
+            this.Load += (sender, e) => LoadView?.Invoke(sender, e);
         }
 
-        private void FormUserOrders_Load(object sender, EventArgs e)
+        public void DisplayUserOrders(DataTable orders)
         {
-            LoadUserOrders();
+            dgvUserOrders.DataSource = orders;
+            dgvUserOrders.ClearSelection();
         }
 
-        private void LoadUserOrders()
+        public void ShowMessage(string message, string title, MessageBoxButtons buttons, MessageBoxIcon icon)
         {
-            if (SessionManager.Instance.CurrentUser == null)
-            {
-                MessageBox.Show("Please log in to view your orders!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                this.Close();
-                return;
-            }
-
-            try
-            {
-                dgvUserOrders.DataSource = _transactionRepository.GetUserPurchaseHistory(SessionManager.Instance.CurrentUser.Id);
-                dgvUserOrders.ClearSelection();
-            }
-            catch (MySqlException ex)
-            {
-                MessageBox.Show("Database Error loading orders: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Failed to load your orders: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            MessageBox.Show(message, title, buttons, icon);
         }
+
+        public void CloseView()
+        {
+            this.Close();
+        }
+
+        public event EventHandler LoadView;
     }
 }

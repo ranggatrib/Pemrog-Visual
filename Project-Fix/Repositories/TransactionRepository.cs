@@ -1,4 +1,3 @@
-// Project/Repositories/TransactionRepository.cs
 using MySql.Data.MySqlClient;
 using Project.Data;
 using System;
@@ -15,27 +14,48 @@ namespace Project.Repositories
             _dbConn = dbConn;
         }
 
-        // <<<< PERUBAHAN INI (Overload untuk transaksi)
-        public bool AddTransaction(Transaction transaction, MySqlConnection conn, MySqlTransaction sqlTransaction)
+        public void AddTransaction(Transaction transaction, MySqlConnection conn, MySqlTransaction trans)
         {
-            string query = "INSERT INTO transaksi (ProdukId, Jumlah, Tanggal, UserId, Status) VALUES (@ProdukId, @Jumlah, @Tanggal, @UserId, @Status)";
-            MySqlCommand cmd = new MySqlCommand(query, conn, sqlTransaction);
-            cmd.Parameters.AddWithValue("@ProdukId", transaction.ProdukId);
-            cmd.Parameters.AddWithValue("@Jumlah", transaction.Jumlah);
-            cmd.Parameters.AddWithValue("@Tanggal", transaction.Tanggal);
-            cmd.Parameters.AddWithValue("@UserId", transaction.UserId);
-            cmd.Parameters.AddWithValue("@Status", transaction.Status);
-            int rowsAffected = cmd.ExecuteNonQuery();
-            return rowsAffected > 0;
+            string query = @"INSERT INTO transaksi (ProdukId, Jumlah, Tanggal, UserId, Status, MetodePembayaran, NamaPenerima, AlamatPengiriman, NomorTeleponPenerima, BuktiTransferPath)
+                             VALUES (@ProdukId, @Jumlah, @Tanggal, @UserId, @Status, @MetodePembayaran, @NamaPenerima, @AlamatPengiriman, @NomorTeleponPenerima, @BuktiTransferPath)";
+
+            using (MySqlCommand cmd = new MySqlCommand(query, conn, trans))
+            {
+                cmd.Parameters.AddWithValue("@ProdukId", transaction.ProdukId);
+                cmd.Parameters.AddWithValue("@Jumlah", transaction.Jumlah);
+                cmd.Parameters.AddWithValue("@Tanggal", transaction.Tanggal);
+                cmd.Parameters.AddWithValue("@UserId", transaction.UserId);
+                cmd.Parameters.AddWithValue("@Status", transaction.Status);
+                cmd.Parameters.AddWithValue("@MetodePembayaran", transaction.MetodePembayaran ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@NamaPenerima", transaction.NamaPenerima ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@AlamatPengiriman", transaction.AlamatPengiriman ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@NomorTeleponPenerima", transaction.NomorTeleponPenerima ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@BuktiTransferPath", transaction.BuktiTransferPath ?? (object)DBNull.Value);
+
+                cmd.ExecuteNonQuery();
+            }
         }
 
-        // Overload untuk transaksi standalone (jika tidak dalam transaksi besar)
         public bool AddTransaction(Transaction transaction)
         {
             using (var conn = _dbConn.GetConnection())
             {
                 conn.Open();
-                return AddTransaction(transaction, conn, null);
+                string query = @"INSERT INTO transaksi (ProdukId, Jumlah, Tanggal, UserId, Status, MetodePembayaran, NamaPenerima, AlamatPengiriman, NomorTeleponPenerima, BuktiTransferPath)
+                                 VALUES (@ProdukId, @Jumlah, @Tanggal, @UserId, @Status, @MetodePembayaran, @NamaPenerima, @AlamatPengiriman, @NomorTeleponPenerima, @BuktiTransferPath)";
+                MySqlCommand cmd = new MySqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@ProdukId", transaction.ProdukId);
+                cmd.Parameters.AddWithValue("@Jumlah", transaction.Jumlah);
+                cmd.Parameters.AddWithValue("@Tanggal", transaction.Tanggal);
+                cmd.Parameters.AddWithValue("@UserId", transaction.UserId);
+                cmd.Parameters.AddWithValue("@Status", transaction.Status);
+                cmd.Parameters.AddWithValue("@MetodePembayaran", transaction.MetodePembayaran ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@NamaPenerima", transaction.NamaPenerima ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@AlamatPengiriman", transaction.AlamatPengiriman ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@NomorTeleponPenerima", transaction.NomorTeleponPenerima ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@BuktiTransferPath", transaction.BuktiTransferPath ?? (object)DBNull.Value);
+                int rowsAffected = cmd.ExecuteNonQuery();
+                return rowsAffected > 0;
             }
         }
 
@@ -44,25 +64,29 @@ namespace Project.Repositories
             using (var conn = _dbConn.GetConnection())
             {
                 conn.Open();
-                string query = @"
-                    SELECT
-                        t.Id AS TransactionId,
-                        p.Nama AS ProductName,
-                        t.Jumlah AS Quantity,
-                        t.Tanggal AS TransactionDate,
-                        p.Harga AS PricePerUnit,
-                        t.Status AS Status,
-                        (t.Jumlah * p.Harga) AS Subtotal
-                    FROM
-                        transaksi t
-                    JOIN
-                        produk p ON t.ProdukId = p.Id
-                    WHERE
-                        t.UserId = @UserId
-                    ORDER BY
-                        t.Tanggal DESC";
+                string query = @"SELECT
+                                    t.Id,
+                                    p.Nama AS ProductName,
+                                    t.Jumlah AS Quantity,
+                                    t.Tanggal AS TransactionDate,
+                                    p.Harga AS PricePerUnit,
+                                    (t.Jumlah * p.Harga) AS Subtotal,
+                                    t.Status AS Status,
+                                    t.MetodePembayaran,
+                                    t.NamaPenerima,
+                                    t.AlamatPengiriman,
+                                    t.NomorTeleponPenerima,
+                                    t.BuktiTransferPath
+                                FROM
+                                    transaksi t
+                                JOIN
+                                    produk p ON t.ProdukId = p.Id
+                                WHERE
+                                    t.UserId = @userId
+                                ORDER BY
+                                    t.Tanggal DESC";
                 MySqlDataAdapter da = new MySqlDataAdapter(query, conn);
-                da.SelectCommand.Parameters.AddWithValue("@UserId", userId);
+                da.SelectCommand.Parameters.AddWithValue("@userId", userId);
                 DataTable dt = new DataTable();
                 da.Fill(dt);
                 return dt;
@@ -74,24 +98,28 @@ namespace Project.Repositories
             using (var conn = _dbConn.GetConnection())
             {
                 conn.Open();
-                string query = @"
-                    SELECT
-                        t.Id AS TransactionId,
-                        u.Username AS UserName,
-                        p.Nama AS ProductName,
-                        t.Jumlah AS Quantity,
-                        t.Tanggal AS TransactionDate,
-                        p.Harga AS PricePerUnit,
-                        t.Status AS Status,
-                        (t.Jumlah * p.Harga) AS Subtotal
-                    FROM
-                        transaksi t
-                    JOIN
-                        produk p ON t.ProdukId = p.Id
-                    JOIN
-                        users u ON t.UserId = u.Id
-                    ORDER BY
-                        t.Tanggal DESC";
+                string query = @"SELECT
+                                    t.Id AS TransactionId,
+                                    u.Username AS UserName,
+                                    p.Nama AS ProductName,
+                                    t.Jumlah AS Quantity,
+                                    t.Tanggal AS TransactionDate,
+                                    p.Harga AS PricePerUnit,
+                                    (t.Jumlah * p.Harga) AS Subtotal,
+                                    t.Status AS Status,
+                                    t.MetodePembayaran,
+                                    t.NamaPenerima,
+                                    t.AlamatPengiriman,
+                                    t.NomorTeleponPenerima,
+                                    t.BuktiTransferPath
+                                FROM
+                                    transaksi t
+                                JOIN
+                                    produk p ON t.ProdukId = p.Id
+                                JOIN
+                                    users u ON t.UserId = u.Id
+                                ORDER BY
+                                    t.Tanggal DESC";
                 MySqlDataAdapter da = new MySqlDataAdapter(query, conn);
                 DataTable dt = new DataTable();
                 da.Fill(dt);
@@ -99,7 +127,6 @@ namespace Project.Repositories
             }
         }
 
-        // <<<< PERUBAHAN INI (Update status transaksi)
         public bool UpdateTransactionStatus(int transactionId, string newStatus)
         {
             using (var conn = _dbConn.GetConnection())

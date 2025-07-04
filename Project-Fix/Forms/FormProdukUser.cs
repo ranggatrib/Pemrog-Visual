@@ -1,87 +1,45 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
+using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
-using MySql.Data.MySqlClient;
+using Project.Controllers;
 using Project.Data;
-using Project.Core;
 using Project.Repositories;
-using Project.Forms;
 
 namespace Project.Forms
 {
-    public partial class FormProdukUser : Form
+    public partial class FormProdukUser : Form, IProdukUserView
     {
-        private ProductRepository _productRepository;
-        private TransactionRepository _transactionRepository;
-        private CartRepository _cartRepository;
-        private Product selectedProduct = new Product();
+        private ProdukUserController _controller;
 
-        public FormProdukUser()
+        public int SelectedProductId
         {
-            InitializeComponent();
-            _productRepository = new ProductRepository(new DatabaseConnection());
-            _transactionRepository = new TransactionRepository(new DatabaseConnection());
-            _cartRepository = new CartRepository(new DatabaseConnection());
-            LoadData();
-            ClearSelection();
-        }
-
-        private void LoadData()
-        {
-            try
+            get
             {
-                dgvProduk.DataSource = _productRepository.GetAllProducts();
-                dgvProduk.ClearSelection();
-            }
-            catch (MySqlException ex)
-            {
-                MessageBox.Show("Database Error: " + ex.Message, "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Failed to load data: " + ex.Message, "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (dgvProduk.CurrentRow != null && dgvProduk.CurrentRow.Cells["Id"].Value != DBNull.Value)
+                {
+                    return Convert.ToInt32(dgvProduk.CurrentRow.Cells["Id"].Value);
+                }
+                return 0;
             }
         }
 
-        private void dgvProduk_CellClick(object sender, DataGridViewCellEventArgs e)
+        public int Quantity => (int)numJumlah.Value;
+
+        public new string ProductName { set => labelNama.Text = value; }
+        public string ProductDescription { set => labelDeskripsi.Text = value; }
+        public string ProductPrice { set => labelHarga.Text = value; }
+        public string ProductStock { set => labelStok.Text = value; }
+
+        public string ProductImageLocation
         {
-            if (e.RowIndex >= 0)
+            set
             {
-                DataGridViewRow row = dgvProduk.Rows[e.RowIndex];
-
-                selectedProduct = new Product
+                if (!string.IsNullOrEmpty(value) && File.Exists(value))
                 {
-                    Id = Convert.ToInt32(row.Cells["Id"].Value),
-                    Nama = row.Cells["Nama"].Value.ToString(),
-                    Deskripsi = row.Cells["Deskripsi"].Value.ToString(),
-                    Harga = Convert.ToDecimal(row.Cells["Harga"].Value),
-                    Stok = Convert.ToInt32(row.Cells["Stok"].Value),
-                    Gambar = row.Cells["Gambar"].Value?.ToString()
-                };
-
-                txtNama.Text = selectedProduct.Nama;
-                txtDeskripsi.Text = selectedProduct.Deskripsi;
-                txtHarga.Text = selectedProduct.Harga.ToString("C");
-                txtStok.Text = selectedProduct.Stok.ToString();
-
-                numJumlah.Maximum = selectedProduct.Stok > 0 ? selectedProduct.Stok : 1;
-                numJumlah.Minimum = 1;
-                numJumlah.Value = 1;
-
-                if (!string.IsNullOrEmpty(selectedProduct.Gambar))
-                {
-                    string imagePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, selectedProduct.Gambar);
-                    if (File.Exists(imagePath))
-                    {
-                        pbGambar.ImageLocation = imagePath;
-                    }
-                    else
-                    {
-                        pbGambar.Image = null;
-                    }
+                    pbGambar.Image = Image.FromFile(value);
                 }
                 else
                 {
@@ -90,178 +48,115 @@ namespace Project.Forms
             }
         }
 
-        private void btnBeli_Click(object sender, EventArgs e)
+        public int MaxQuantity { set => numJumlah.Maximum = value; }
+
+        public void DisplayProducts(DataTable products)
         {
-            if (!SessionManager.Instance.IsLoggedIn)
+            dgvProduk.DataSource = products;
+            if (dgvProduk.Columns.Contains("Id")) dgvProduk.Columns["Id"].Visible = false;
+            if (dgvProduk.Columns.Contains("Gambar")) dgvProduk.Columns["Gambar"].Visible = false;
+        }
+
+        public void ClearProductSelection()
+        {
+            labelNama.Text = "Nama Produk";
+            labelDeskripsi.Text = "Deskripsi Produk";
+            labelHarga.Text = "Rp 0";
+            labelStok.Text = "Stok: 0";
+            pbGambar.Image = null;
+            numJumlah.Value = 1;
+            numJumlah.Maximum = 1;
+
+            if (dgvProduk.CurrentRow != null)
             {
-                MessageBox.Show("Please log in to make a purchase!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            if (selectedProduct == null || selectedProduct.Id == 0)
-            {
-                MessageBox.Show("Please select a product first!", "Warning",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            int quantity = (int)numJumlah.Value;
-
-            if (quantity <= 0)
-            {
-                MessageBox.Show("Quantity must be greater than 0!", "Warning",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (quantity > selectedProduct.Stok)
-            {
-                MessageBox.Show($"Quantity exceeds available stock! Available: {selectedProduct.Stok}",
-                    "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            try
-            {
-                using (var conn = new DatabaseConnection().GetConnection())
-                {
-                    conn.Open();
-                    using (var transaction = conn.BeginTransaction())
-                    {
-                        try
-                        {
-                            _productRepository.UpdateProductStock(selectedProduct.Id, -quantity, conn, transaction);
-
-                            Transaction newTransaction = new Transaction
-                            {
-                                ProdukId = selectedProduct.Id,
-                                Jumlah = quantity,
-                                Tanggal = DateTime.Now,
-                                UserId = SessionManager.Instance.CurrentUser.Id,
-                                Status = "Pending"
-                            };
-                            _transactionRepository.AddTransaction(newTransaction, conn, transaction);
-
-                            transaction.Commit();
-
-                            MessageBox.Show($"Successfully purchased {quantity} item(s)!\n" +
-                                          $"Remaining stock: {selectedProduct.Stok - quantity}",
-                                          "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                            LoadData();
-                            ClearSelection();
-                        }
-                        catch (Exception innerEx)
-                        {
-                            transaction.Rollback();
-                            throw innerEx;
-                        }
-                    }
-                }
-            }
-            catch (MySqlException ex)
-            {
-                MessageBox.Show("Database Error during purchase: " + ex.Message, "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Purchase failed: " + ex.Message, "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                dgvProduk.CurrentRow.Selected = false;
             }
         }
 
-        private void btnLogout_Click(object sender, EventArgs e)
+        public void ShowMessage(string message, string title, MessageBoxButtons buttons, MessageBoxIcon icon)
         {
-            SessionManager.Instance.LogoutUser();
+            MessageBox.Show(message, title, buttons, icon);
+        }
+
+        public void HideView()
+        {
             this.Hide();
+        }
+
+        public void ShowLoginForm()
+        {
             FormLogin loginForm = new FormLogin();
             loginForm.Show();
         }
 
-        private void ClearSelection()
+        public void ShowCartForm()
         {
-            selectedProduct = new Product();
-            txtNama.Text = "";
-            txtDeskripsi.Text = "";
-            txtHarga.Text = "";
-            txtStok.Text = "";
-            pbGambar.Image = null;
-            numJumlah.Value = 1;
-            numJumlah.Maximum = 1;
-        }
-
-        private void btnAddToCart_Click(object sender, EventArgs e)
-        {
-            if (!SessionManager.Instance.IsLoggedIn)
-            {
-                MessageBox.Show("Please log in to add items to your cart!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-            if (selectedProduct == null || selectedProduct.Id == 0)
-            {
-                MessageBox.Show("Please select a product first!", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            int quantity = (int)numJumlah.Value;
-            if (quantity <= 0)
-            {
-                MessageBox.Show("Quantity must be greater than 0!", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            if (quantity > selectedProduct.Stok)
-            {
-                MessageBox.Show($"Quantity exceeds available stock! Available: {selectedProduct.Stok}", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            try
-            {
-                bool success = _cartRepository.AddToCart(SessionManager.Instance.CurrentUser.Id, selectedProduct.Id, quantity);
-                if (success)
-                {
-                    MessageBox.Show($"{quantity} of {selectedProduct.Nama} added to cart!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    ClearSelection();
-                }
-                else
-                {
-                    MessageBox.Show("Failed to add item to cart.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-            catch (MySqlException ex)
-            {
-                MessageBox.Show("Database Error adding to cart: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Failed to add item to cart: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        private void btnViewCart_Click(object sender, EventArgs e)
-        {
-            if (!SessionManager.Instance.IsLoggedIn)
-            {
-                MessageBox.Show("Please log in to view your cart!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
             FormCart cartForm = new FormCart();
             cartForm.ShowDialog();
-            LoadData();
         }
 
-        private void btnMyOrders_Click(object sender, EventArgs e)
+        public void ShowUserOrdersForm()
         {
-            if (!SessionManager.Instance.IsLoggedIn)
-            {
-                MessageBox.Show("Please log in to view your orders!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
             FormUserOrders userOrdersForm = new FormUserOrders();
-            userOrdersForm.ShowDialog();
+            userOrdersForm.Show();
+        }
+
+        public DialogResult ShowShippingDetailsForm(out string namaPenerima, out string alamatPengiriman, out string nomorTeleponPenerima)
+        {
+            namaPenerima = "";
+            alamatPengiriman = "";
+            nomorTeleponPenerima = "";
+
+            using (FormShippingDetails shippingForm = new FormShippingDetails())
+            {
+                if (shippingForm.ShowDialog() == DialogResult.OK)
+                {
+                    namaPenerima = shippingForm.NamaPenerimaText;
+                    alamatPengiriman = shippingForm.AlamatPengirimanText;
+                    nomorTeleponPenerima = shippingForm.NomorTeleponPenerimaText;
+                    return DialogResult.OK;
+                }
+                return DialogResult.Cancel;
+            }
+        }
+
+        public DialogResult ShowPaymentForm(decimal grandTotal, List<CartItem> cartItems, string namaPenerima, string alamatPengiriman, string nomorTeleponPenerima)
+        {
+            using (FormPayment paymentForm = new FormPayment(grandTotal, cartItems, namaPenerima, alamatPengiriman, nomorTeleponPenerima))
+            {
+                return paymentForm.ShowDialog();
+            }
+        }
+
+        public event EventHandler LoadView;
+        public event DataGridViewCellEventHandler ProductCellClick;
+        public event EventHandler BuyButtonClick;
+        public event EventHandler AddToCartButtonClick;
+        public event EventHandler ViewCartButtonClick;
+        public event EventHandler MyOrdersButtonClick;
+        public event EventHandler LogoutButtonClick;
+
+        public FormProdukUser()
+        {
+            InitializeComponent();
+
+            _controller = new ProdukUserController(
+                this,
+                new ProductRepository(new DatabaseConnection()),
+                new TransactionRepository(new DatabaseConnection()),
+                new CartRepository(new DatabaseConnection())
+            );
+
+            this.Load += (sender, e) => LoadView?.Invoke(sender, e);
+            dgvProduk.CellClick += (sender, e) => ProductCellClick?.Invoke(sender, e);
+            btnBeli.Click += (sender, e) => BuyButtonClick?.Invoke(sender, e);
+            btnAddToCart.Click += (sender, e) => AddToCartButtonClick?.Invoke(sender, e);
+            btnViewCart.Click += (sender, e) => ViewCartButtonClick?.Invoke(sender, e);
+            btnMyOrders.Click += (sender, e) => MyOrdersButtonClick?.Invoke(sender, e);
+            btnLogout.Click += (sender, e) => LogoutButtonClick?.Invoke(sender, e);
+
+            numJumlah.Minimum = 1;
+            numJumlah.Maximum = 1;
         }
     }
 }

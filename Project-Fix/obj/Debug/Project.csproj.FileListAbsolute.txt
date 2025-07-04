@@ -93,9 +93,14 @@ E:\Project\bin\Debug\zh-Hans\Microsoft.Data.SqlClient.resources.dll
 E:\Project\bin\Debug\zh-Hant\Microsoft.Data.SqlClient.resources.dll
 E:\Project\obj\Debug\Project.csproj.AssemblyReference.cache
 E:\Project\obj\Debug\Project.Forms.FormAdminDashboard.resources
+E:\Project\obj\Debug\Project.Forms.FormAdminTransactions.resources
 E:\Project\obj\Debug\Project.Forms.FormLogin.resources
+E:\Project\obj\Debug\Project.Forms.FormPayment.resources
 E:\Project\obj\Debug\Project.Forms.FormProdukAdmin.resources
 E:\Project\obj\Debug\Project.Forms.FormProdukUser.resources
+E:\Project\obj\Debug\Project.Forms.FormShippingDetails.resources
+E:\Project\obj\Debug\Project.Forms.FormUserManagement.resources
+E:\Project\obj\Debug\Project.Forms.FormUserOrders.resources
 E:\Project\obj\Debug\Project.Properties.Resources.resources
 E:\Project\obj\Debug\Project.csproj.GenerateResource.cache
 E:\Project\obj\Debug\Project.csproj.CoreCompileInputs.cache
